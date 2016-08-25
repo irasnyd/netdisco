@@ -1,0 +1,20 @@
+postgres:
+  image: docker.io/postgres:9.5
+  environment:
+    - POSTGRES_USER=netdisco
+    - POSTGRES_PASSWORD=netdisco
+  volumes:
+    - "./postgresql-data:/var/lib/postgresql/data"
+  mem_limit: "1g"
+
+netdisco:
+  image: irasnyd/netdisco:latest
+  environment:
+    - NETDISCO_ADMIN_USER=admin
+    - NETDISCO_ADMIN_PASS=admin
+  links:
+    - postgres:db
+  ports:
+    - "5000:5000"
+  mem_limit: "1g"
+  hostname: "netdisco"

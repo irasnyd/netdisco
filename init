@@ -1,0 +1,111 @@
+#!/bin/bash
+
+NETDISCO_DB_NAME="${NETDISCO_DB_NAME:-netdisco}"
+NETDISCO_DB_USER="${NETDISCO_DB_USER:-${DB_ENV_POSTGRES_USER:-netdisco}}"
+NETDISCO_DB_PASS="${NETDISCO_DB_PASS:-${DB_ENV_POSTGRES_PASSWORD:-netdisco}}"
+NETDISCO_DB_HOST="${NETDISCO_DB_HOST:-${DB_PORT_5432_TCP_ADDR:-postgres.example.com}}"
+NETDISCO_DB_PORT="${NETDISCO_DB_PORT:-${DB_PORT_5432_TCP_PORT:-5432}}"
+NETDISCO_DB_ROLE="${NETDISCO_DB_ROLE:-netdisco}"
+
+NETDISCO_DOMAIN=${NETDISCO_DOMAIN:-`hostname -d`}
+NETDISCO_RO_COMMUNITY=${NETDISCO_RO_COMMUNITY:-public}
+
+NETDISCO_ADMIN_USER="${NETDISCO_ADMIN_USER:-netdisco}"
+NETDISCO_ADMIN_PASS="${NETDISCO_ADMIN_PASS:-netdisco}"
+
+my_psql() {
+    psql -h "$NETDISCO_DB_HOST" -p "$NETDISCO_DB_PORT" -U "$NETDISCO_DB_USER" "$@"
+}
+
+provision_netdisco_db() {
+    my_psql -c "CREATE ROLE $NETDISCO_DB_ROLE WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE password '$NETDISCO_DB_PASS'"
+    my_psql -c "CREATE DATABASE $NETDISCO_DB_NAME OWNER $NETDISCO_DB_ROLE"
+}
+
+check_postgres() {
+    if [[ -z `my_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$NETDISCO_DB_ROLE'"` ]]; then
+        provision_netdisco_db
+    fi
+}
+
+set_environment() {
+    local ENV_FILE="$NETDISCO_HOME/environments/deployment.yml"
+
+    mkdir -p "$NETDISCO_HOME/environments"
+    cp "$NETDISCO_HOME/perl5/lib/perl5/auto/share/dist/App-Netdisco/environments/deployment.yml" "$ENV_FILE"
+    chmod 0600 "$ENV_FILE"
+
+    sed -i -e "s/name: 'netdisco'/name: '$NETDISCO_DB_NAME'/" "$ENV_FILE"
+    sed -i -e "s/user: 'changeme'/user: '$NETDISCO_DB_USER'/" "$ENV_FILE"
+    sed -i -e "s/pass: 'changeme'/pass: '$NETDISCO_DB_PASS'/" "$ENV_FILE"
+    sed -i -e "s/#*host: 'localhost'/host: '${NETDISCO_DB_HOST};port=${NETDISCO_DB_PORT}'/" "$ENV_FILE"
+    sed -i -e "s/#*domain_suffix: '.example.com'/domain_suffix: '$NETDISCO_DOMAIN'/" "$ENV_FILE"
+
+    sed -i -e "s/community: 'public'/community: '$NETDISCO_RO_COMMUNITY'/" "$ENV_FILE"
+
+    if [[ -n "$NETDISCO_WR_COMMUNITY" ]]; then
+        sed -i -e "/snmp_auth:/a\  - tag: 'default_v2_for_write'" "$ENV_FILE"
+        sed -i -e "/^  - tag: 'default_v2_for_write/a\    write: true" "$ENV_FILE"
+        sed -i -e "/^  - tag: 'default_v2_for_write/a\    read: false" "$ENV_FILE"
+        sed -i -e "/^  - tag: 'default_v2_for_write/a\    community: '$NETDISCO_WR_COMMUNITY'" "$ENV_FILE"
+    fi
+
+    sed -i -e "/#schedule:/, /when: '20 23 \* \* \*'/ s/#//" "$ENV_FILE"
+
+    sed -i -e "/#workers:/, /tasks: 'AUTO \* 2'/ s/#//" "$ENV_FILE"
+    sed -i -e "s/AUTO \* 2/4/" "$ENV_FILE"
+
+    echo "table_pagesize: 100" >> "$ENV_FILE"
+}
+
+check_environment() {
+    if [[ ! -d "$NETDISCO_HOME/environments" ]]; then
+        set_environment
+    fi
+}
+
+# setup postgresql password file
+echo "*:*:*:$NETDISCO_DB_USER:$NETDISCO_DB_PASS" > ~/.pgpass
+chmod 600 ~/.pgpass
+
+POSTGRESQL_RUNNING=0
+
+# wait for postgresql to start
+for ((i=0; i<120; i++)); do
+    if my_psql -tAc "SELECT 1" ; then
+        POSTGRESQL_RUNNING=1
+        break
+    fi
+
+    echo "waiting for postgresql database to start"
+    sleep 1
+done
+
+# exit if postgresql was not running
+if [[ "$POSTGRESQL_RUNNING" -eq 0 ]]; then
+    echo "ERROR: postgresql database never started"
+    exit 1
+fi
+
+check_postgres
+check_environment
+
+# Modify the deployment script to assume 'y' for every answer
+# and get the administrator username/password from the environment
+sed -i \
+	-e "s/new('netdisco')/new('netdisco', \\*STDIN, \\*STDOUT)/" \
+	-e "s/default => 'n'/default => 'y'/g" \
+	-e 's/my $name = $term.*$/my $name = $ENV{"NETDISCO_ADMIN_USER"};/' \
+	-e 's/my $pass = $term.*$/my $pass = $ENV{"NETDISCO_ADMIN_PASS"};/' \
+	"$NETDISCO_HOME/perl5/bin/netdisco-deploy"
+
+# Deploy netdisco
+cat | netdisco-deploy "$NETDISCO_HOME/oui.txt" << EOF
+y
+y
+y
+n
+EOF
+
+# run supervisord in the foreground
+exec /usr/bin/supervisord -n -c /etc/supervisord.conf
