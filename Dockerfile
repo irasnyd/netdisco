@@ -33,7 +33,7 @@ COPY oui.txt "$NETDISCO_HOME/"
 # Deploy the MIBS manually
 # This website is fast, but we'd rather not depend on being Internet accessable
 # during container startup
-RUN curl -L http://downloads.sourceforge.net/project/netdisco/netdisco-mibs/latest-snapshot/netdisco-mibs-snapshot.tar.gz > "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz" \
+RUN curl -L --connect-timeout 60 --retry 10 http://downloads.sourceforge.net/project/netdisco/netdisco-mibs/latest-snapshot/netdisco-mibs-snapshot.tar.gz > "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz" \
         && cd "$NETDISCO_HOME" \
         && tar xzf "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz" \
         && rm -f "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz"
