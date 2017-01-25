@@ -5,7 +5,7 @@ MAINTAINER Ira W. Snyder <isnyder@lcogt.net>
 EXPOSE 5000
 ENTRYPOINT [ "/init" ]
 
-ENV NETDISCO_VERSION 2.033006
+ENV NETDISCO_VERSION 2.034002
 
 # install and update packages
 RUN yum -y install epel-release \
