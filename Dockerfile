@@ -5,19 +5,32 @@ MAINTAINER Ira W. Snyder <isnyder@lcogt.net>
 EXPOSE 5000
 ENTRYPOINT [ "/init" ]
 
-ENV NETDISCO_VERSION 2.034002
+ENV NETDISCO_HOME "/netdisco"
+ENV NETDISCO_VERSION 2.036009
+ENV NETDISCO_MIBS_VERSION 3.4
 
 # install and update packages
 RUN yum -y install epel-release \
-        && yum -y install perl-core perl-DBD-Pg net-snmp-perl net-snmp-devel \
-                          make automake gcc tar gzip bzip2 postgresql \
-                          supervisor \
+        && yum -y install \
+                automake \
+                bzip2 \
+                gcc \
+                gzip \
+                make \
+                net-snmp-devel \
+                net-snmp-perl \
+                openssl-devel \
+                openssl-perl \
+                perl-core \
+                perl-DBD-Pg \
+                postgresql \
+                supervisor \
+                tar \
         && yum -y update \
         && yum -y clean all
 
 # Install netdisco
 # https://metacpan.org/pod/App::Netdisco
-ENV NETDISCO_HOME "/netdisco"
 RUN mkdir -p "$NETDISCO_HOME" \
         && cd "$NETDISCO_HOME" \
         && curl -L http://cpanmin.us/ | perl - --notest --local-lib $NETDISCO_HOME/perl5 App::Netdisco@$NETDISCO_VERSION \
@@ -26,18 +39,14 @@ RUN mkdir -p "$NETDISCO_HOME" \
 # Add netdisco to the PATH
 ENV PATH $NETDISCO_HOME/perl5/bin:$PATH
 
-# Copy OUI file
-# The website that hosts this is incredibly slow, so we provide a local copy
-COPY oui.txt "$NETDISCO_HOME/"
+# Fetch OUI file and MIBS manually. This makes sure that we don't need Internet
+# access to start the container, since we already have these files built in.
+RUN cd "$NETDISCO_HOME" \
+        && curl -L --connect-timeout 60 --retry 10 https://raw.githubusercontent.com/netdisco/upstream-sources/master/ieee/oui.txt > oui.txt \
+        && curl -L --connect-timeout 60 --retry 10 https://github.com/netdisco/netdisco-mibs/archive/$NETDISCO_MIBS_VERSION.tar.gz > netdisco-mibs-$NETDISCO_MIBS_VERSION.tar.gz \
+        && tar xzf netdisco-mibs-$NETDISCO_MIBS_VERSION.tar.gz \
+        && mv netdisco-mibs-$NETDISCO_MIBS_VERSION netdisco-mibs \
+        && rm -f netdisco-mibs-$NETDISCO_MIBS_VERSION.tar.gz
 
-# Deploy the MIBS manually
-# This website is fast, but we'd rather not depend on being Internet accessable
-# during container startup
-RUN curl -L --connect-timeout 60 --retry 10 http://downloads.sourceforge.net/project/netdisco/netdisco-mibs/latest-snapshot/netdisco-mibs-snapshot.tar.gz > "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz" \
-        && cd "$NETDISCO_HOME" \
-        && tar xzf "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz" \
-        && rm -f "$NETDISCO_HOME/netdisco-mibs-snapshot.tar.gz"
-
-# Install configuration
-COPY processes.ini /etc/supervisord.d/
-COPY init /
+# Install operating system configuration
+COPY docker/ /
