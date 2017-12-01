@@ -35,6 +35,9 @@ set_environment() {
     cp "$NETDISCO_HOME/perl5/lib/perl5/auto/share/dist/App-Netdisco/environments/deployment.yml" "$ENV_FILE"
     chmod 0600 "$ENV_FILE"
 
+    # remove all of the non-YAML garbage included in the example deployment.yml
+    sed -i -e '/^# ¯`·.¸¸.·´¯`·.¸¸.·´¯`·.¸¸.·´¯`·.¸¸.·´¯`·.¸¸.·´¯`·.¸¸.·´¯`·.¸¸.·´¯`·.¸¸$/q' "$ENV_FILE"
+
     sed -i -e "s/name: 'netdisco'/name: '$NETDISCO_DB_NAME'/" "$ENV_FILE"
     sed -i -e "s/user: 'changeme'/user: '$NETDISCO_DB_USER'/" "$ENV_FILE"
     sed -i -e "s/pass: 'changeme'/pass: '$NETDISCO_DB_PASS'/" "$ENV_FILE"
