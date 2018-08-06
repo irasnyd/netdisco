@@ -1,3 +1,8 @@
+# DEPRECATION NOTICE
+
+These images are no longer maintained! Please migrate to the Netdisco project
+[official Docker images](https://store.docker.com/community/images/netdisco/netdisco)!
+
 Introduction
 ============
 
