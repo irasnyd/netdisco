@@ -111,4 +111,6 @@ n
 EOF
 
 # run supervisord in the foreground
+mkdir -p /var/run/supervisor/
+touch /var/run/supervisor/supervisor.sock
 exec /usr/bin/supervisord -n -c /etc/supervisord.conf
